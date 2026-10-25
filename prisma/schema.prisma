@@ -1,0 +1,221 @@
+// prisma/schema.prisma
+// Prisma schema for "aschauhan-dev cafe"
+// Database: PostgreSQL (Compatible with Supabase, Neon, AWS RDS)
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CUSTOMER
+  KITCHEN_STAFF
+  WAITER
+  ADMIN
+  MANAGER
+}
+
+enum TableZone {
+  LAKESIDE_DECK      // Edge seating overlooking Upper Lake Bhopal
+  CABANA_LOUNGE      // Intimate sunset cabanas with fairy lights
+  INDOOR_GLASSHOUSE  // Climate-controlled artisanal brewing bar
+}
+
+enum TableStatus {
+  AVAILABLE
+  RESERVED
+  OCCUPIED
+  MAINTENANCE
+}
+
+enum ReservationStatus {
+  CONFIRMED
+  SEATED
+  CANCELLED
+  COMPLETED
+}
+
+enum OrderStatus {
+  PENDING
+  PREPARING
+  SERVED
+  BILLED
+  CANCELLED
+}
+
+enum FulfillmentType {
+  DINE_IN
+  TAKEAWAY
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  RAZORPAY_UPI
+  RAZORPAY_CARD
+  RAZORPAY_NETBANKING
+  CASH_AT_COUNTER
+}
+
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  phone         String?
+  role          Role           @default(CUSTOMER)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  reservations  Reservation[]
+  orders        Order[]
+
+  @@map("users")
+}
+
+model Table {
+  id            String         @id @default(uuid())
+  tableNumber   String         @unique // e.g. "T-01", "LAKE-07"
+  capacity      Int            @default(4)
+  zone          TableZone      @default(LAKESIDE_DECK)
+  status        TableStatus    @default(AVAILABLE)
+  qrCodeUrl     String?        // URL pointing to /?table=X for instant dine-in
+  notes         String?        // e.g. "Prime Upper Lake sunset panoramic view"
+  reservations  Reservation[]
+  orders        Order[]
+
+  @@map("tables")
+}
+
+model Reservation {
+  id              String             @id @default(uuid())
+  bookingCode     String             @unique // e.g. "BHP-SUNSET-7729"
+  guestName       String
+  guestEmail      String
+  guestPhone      String
+  partySize       Int
+  reservationDate DateTime
+  timeSlot        String             // e.g. "17:30 - 19:30" (Sunset Slot)
+  isSunsetSlot    Boolean            @default(false)
+  specialRequests String?
+  status          ReservationStatus  @default(CONFIRMED)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  tableId         String?
+  table           Table?             @relation(fields: [tableId], references: [id], onDelete: SetNull)
+
+  userId          String?
+  user            User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("reservations")
+}
+
+model Category {
+  id          String      @id @default(uuid())
+  name        String      @unique // e.g. "Artisanal Pour-Overs", "Woodfired Pizzas"
+  slug        String      @unique
+  description String?
+  sortOrder   Int         @default(0)
+  items       MenuItem[]
+
+  @@map("categories")
+}
+
+model MenuItem {
+  id            String       @id @default(uuid())
+  name          String
+  slug          String       @unique
+  description   String
+  price         Decimal      @db.Decimal(10, 2) // In INR (₹)
+  imageUrl      String?
+  isAvailable   Boolean      @default(true)     // 86-ing capability
+  isChefSpecial Boolean      @default(false)
+  isVeg         Boolean      @default(true)
+  isVegan       Boolean      @default(false)
+  spiceLevel    Int          @default(0)        // 0 to 3
+  prepTimeMin   Int          @default(15)       // In minutes
+  customOptions Json?        // Milk options, roast level, extra shots
+
+  categoryId    String
+  category      Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  orderItems    OrderItem[]
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@map("menu_items")
+}
+
+model Order {
+  id              String          @id @default(uuid())
+  orderNumber     String          @unique // e.g. "ORD-9024"
+  fulfillmentType FulfillmentType @default(DINE_IN)
+  status          OrderStatus     @default(PENDING)
+  notes           String?
+  
+  // Financials in INR
+  subtotal        Decimal         @db.Decimal(10, 2)
+  gstAmount       Decimal         @db.Decimal(10, 2) // 5% Food GST
+  tipAmount       Decimal         @default(0.00) @db.Decimal(10, 2)
+  discountAmount  Decimal         @default(0.00) @db.Decimal(10, 2)
+  totalAmount     Decimal         @db.Decimal(10, 2)
+
+  customerName    String
+  customerPhone   String
+  customerEmail   String?
+
+  tableId         String?
+  table           Table?          @relation(fields: [tableId], references: [id], onDelete: SetNull)
+
+  userId          String?
+  user            User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  items           OrderItem[]
+  payments        Payment[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id            String    @id @default(uuid())
+  quantity      Int       @default(1)
+  unitPrice     Decimal   @db.Decimal(10, 2)
+  customization Json?     // { milk: "Oat Milk", extraShot: true, sweetness: "50%" }
+  itemTotal     Decimal   @db.Decimal(10, 2)
+
+  orderId       String
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  menuItemId    String
+  menuItem      MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  @@map("order_items")
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  orderId           String
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount            Decimal       @db.Decimal(10, 2)
+  currency          String        @default("INR")
+  status            PaymentStatus @default(PENDING)
+  paymentMethod     PaymentMethod @default(RAZORPAY_UPI)
+  razorpayPaymentId String?       @unique
+  razorpayOrderId   String?
+  razorpaySignature String?
+
+  createdAt         DateTime      @default(now())
+
+  @@map("payments")
+}

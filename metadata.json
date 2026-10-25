@@ -1,0 +1,6 @@
+{
+  "name": "aschauhan-dev cafe | Rooftop Coffee & Sunset Bistro",
+  "description": "Open-air Rooftop Specialty Coffee & Sunset Bistro overlooking Upper Lake in Bhopal, Madhya Pradesh. Live table booking, QR dine-in ordering, artisanal brews, and real-time kitchen display system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
